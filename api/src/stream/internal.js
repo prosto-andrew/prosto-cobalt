@@ -1,7 +1,8 @@
-import { request } from "undici";
+import { fetch, request } from "undici";
 import { Readable } from "node:stream";
 import { closeRequest, getHeaders, pipe } from "./shared.js";
 import { handleHlsPlaylist, isHlsResponse, probeInternalHLSTunnel } from "./internal-hls.js";
+import { assertPublicURL } from "../security/ssrf.js";
 
 const CHUNK_SIZE = BigInt(8e6); // 8 MB
 const min = (a, b) => a < b ? a : b;
@@ -15,6 +16,7 @@ async function* readChunks(streamInfo, size) {
             throw new Error("controller aborted");
         }
 
+        await assertPublicURL(streamInfo.url);
         const chunk = await request(streamInfo.url, {
             headers: {
                 ...getHeaders(streamInfo.service),
@@ -57,6 +59,7 @@ async function handleChunkedStream(streamInfo, res) {
     try {
         let req, attempts = 3;
         while (attempts--) {
+            await assertPublicURL(streamInfo.url);
             req = await fetch(streamInfo.url, {
                 headers: getHeaders(streamInfo.service),
                 method: 'HEAD',
@@ -107,6 +110,7 @@ async function handleGenericStream(streamInfo, res) {
     const cleanup = () => res.end();
 
     try {
+        await assertPublicURL(streamInfo.url);
         const fileResponse = await request(streamInfo.url, {
             headers: {
                 ...Object.fromEntries(streamInfo.headers),
@@ -173,6 +177,7 @@ export async function probeInternalTunnel(streamInfo) {
             });
         }
 
+        await assertPublicURL(streamInfo.url);
         const response = await request(streamInfo.url, {
             method: 'HEAD',
             headers,

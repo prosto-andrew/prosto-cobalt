@@ -1,10 +1,9 @@
-import { Agent, request } from "undici";
+import { request } from "undici";
 import { create as contentDisposition } from "content-disposition-header";
 
 import { destroyInternalStream } from "./manage.js";
 import { getHeaders, closeRequest, closeResponse, pipe } from "./shared.js";
-
-const defaultAgent = new Agent();
+import { safeAgent, assertPublicURL } from "../security/ssrf.js";
 
 export default async function (streamInfo, res) {
     const abortController = new AbortController();
@@ -18,6 +17,8 @@ export default async function (streamInfo, res) {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Content-disposition', contentDisposition(streamInfo.filename));
 
+        await assertPublicURL(streamInfo.urls);
+
         const { body: stream, headers, statusCode } = await request(streamInfo.urls, {
             headers: {
                 ...getHeaders(streamInfo.service),
@@ -25,7 +26,7 @@ export default async function (streamInfo, res) {
             },
             signal: abortController.signal,
             maxRedirections: 16,
-            dispatcher: defaultAgent,
+            dispatcher: safeAgent,
         });
 
         res.status(statusCode);

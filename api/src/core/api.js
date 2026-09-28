@@ -24,18 +24,25 @@ import * as APIKeys from "../security/api-keys.js";
 import * as Cookies from "../processing/cookie/manager.js";
 import * as YouTubeSession from "../processing/helpers/youtube-session.js";
 
+// git info is only printed to the local console on startup, it's no longer
+// exposed via the api. the docker image doesn't ship .git, so missing
+// info must not crash the api.
+const unknown = () => 'unknown';
 const git = {
-    branch: await getBranch(),
-    commit: await getCommit(),
-    remote: await getRemote(),
+    branch: await getBranch().catch(unknown),
+    commit: await getCommit().catch(unknown),
+    remote: await getRemote().catch(unknown),
 }
 
 const version = await getVersion();
 
 const acceptRegex = /^application\/json(; charset=utf-8)?$/;
 
+// without CORS_WILDCARD=1, only CORS_URL (if set) may make cross-origin
+// requests. note that cors() treats a missing origin as "*", so an unset
+// CORS_URL has to be turned into an explicit `false`.
 const corsConfig = env.corsWildcard ? {} : {
-    origin: env.corsURL,
+    origin: env.corsURL || false,
     optionsSuccessStatus: 200
 }
 
@@ -59,7 +66,6 @@ export const runAPI = async (express, app, __dirname, isPrimary = true) => {
                     return friendlyServiceName(e);
                 }),
             },
-            git,
         });
     }
 

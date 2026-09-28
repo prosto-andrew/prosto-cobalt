@@ -1,6 +1,7 @@
 import HLS from "hls-parser";
 import { createInternalStream } from "./manage.js";
-import { request } from "undici";
+import { fetch, request } from "undici";
+import { assertPublicURL } from "../security/ssrf.js";
 
 function getURL(url) {
     try {
@@ -22,12 +23,14 @@ function transformObject(streamInfo, hlsObject) {
         fullUrl = new URL(hlsObject.uri, streamInfo.url);
     }
 
-    if (fullUrl.hostname !== '127.0.0.1') {
-        hlsObject.uri = createInternalStream(fullUrl.toString(), streamInfo);
+    // every uri (including ones pointing at 127.0.0.1) goes through an
+    // internal tunnel, where it's checked against the ssrf blocklist.
+    // letting local uris through untouched would make ffmpeg fetch them
+    // directly.
+    hlsObject.uri = createInternalStream(fullUrl.toString(), streamInfo);
 
-        if (hlsObject.map) {
-            hlsObject.map = transformObject(streamInfo, hlsObject.map);
-        }
+    if (hlsObject.map) {
+        hlsObject.map = transformObject(streamInfo, hlsObject.map);
     }
 
     return hlsObject;
@@ -77,6 +80,7 @@ export async function handleHlsPlaylist(streamInfo, req, res) {
 }
 
 async function getSegmentSize(url, config) {
+    await assertPublicURL(url);
     const segmentResponse = await request(url, {
         ...config,
         throwOnError: true
@@ -108,6 +112,7 @@ export async function probeInternalHLSTunnel(streamInfo) {
 
     const config = { headers, dispatcher, signal, maxRedirections: 16 };
 
+    await assertPublicURL(url);
     const manifestResponse = await fetch(url, config);
 
     const manifest = HLS.parse(await manifestResponse.text());

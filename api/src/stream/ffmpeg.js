@@ -64,9 +64,19 @@ const render = async (res, streamInfo, ffargs, estimateMultiplier) => {
     );
 
     try {
+        // ffmpeg only ever reads from cobalt's internal http tunnels,
+        // so every other protocol (file, concat, data, ...) is disabled
+        // for every input. this keeps a crafted playlist from making
+        // ffmpeg read local files.
+        const inputArgs = ffargs.flatMap(arg =>
+            arg === '-i'
+                ? ['-protocol_whitelist', 'http,tcp,crypto', arg]
+                : [arg]
+        );
+
         const args = [
             '-loglevel', '-8',
-            ...ffargs,
+            ...inputArgs,
         ];
 
         process = spawn(...getCommand(args), {

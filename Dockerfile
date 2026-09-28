@@ -18,7 +18,11 @@ FROM base AS api
 WORKDIR /app
 
 COPY --from=build --chown=node:node /prod/api /app
-COPY --from=build --chown=node:node /app/.git /app/.git
+
+# the api listens on loopback by default; inside the container it has to
+# listen on all interfaces so the published port works. restrict exposure
+# with the host side of the port mapping (e.g. 127.0.0.1:9000:9000).
+ENV API_LISTEN_ADDRESS=0.0.0.0
 
 USER node
 

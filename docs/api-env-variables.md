@@ -20,7 +20,7 @@ this document is not final and will expand over time. feel free to improve it!
 ### networking vars
 | name                | default   | value example                         |
 |:--------------------|:----------|:--------------------------------------|
-| API_LISTEN_ADDRESS  | `0.0.0.0` | `127.0.0.1`                           |
+| API_LISTEN_ADDRESS  | `127.0.0.1` | `0.0.0.0`                           |
 | FREEBIND_CIDR       |           | `2001:db8::/32`                       |
 
 #### undici proxy vars
@@ -49,14 +49,14 @@ this document is not final and will expand over time. feel free to improve it!
 ### security vars
 | name              | default | value example                         |
 |:------------------|:--------|:--------------------------------------|
-| CORS_WILDCARD     | `1`     | `0`                                   |
+| CORS_WILDCARD     | `0`     | `1`                                   |
 | CORS_URL          |         | `https://web.url.example`             |
 | TURNSTILE_SITEKEY |         | `1x00000000000000000000BB`            |
 | TURNSTILE_SECRET  |         | `1x0000000000000000000000000000000AA` |
 | JWT_SECRET        |         | see [details](#security)              |
 | JWT_EXPIRY        | `120`   | `240`                                 |
 | API_KEY_URL       |         | `file://keys.json`                    |
-| API_AUTH_REQUIRED |         | `1`                                   |
+| API_AUTH_REQUIRED | `1` with `API_KEY_URL` | `0`                    |
 
 [*view details*](#security)
 
@@ -120,13 +120,13 @@ the value is a string: `never` (default), `session`, or `always`:
 - when set to `always`, all requests will be forced to use on-device processing, no matter the preference.
 
 ### API_ENV_FILE
-the URL or local path to a `key=value`-style environment variable file. this is used for dynamically reloading environment variables. **not all environment variables are able to be updated by this.** (e.g. the ratelimiters are instantiated when starting cobalt, and cannot be changed)
+the URL or local path to a `key=value`-style environment variable file. remote files must be served over `https://` (plain `http://` is only accepted from localhost). lines starting with `#` are ignored. this is used for dynamically reloading environment variables. **not all environment variables are able to be updated by this.** (e.g. the ratelimiters are instantiated when starting cobalt, and cannot be changed)
 
 ## networking
 [*jump to the table*](#networking-vars)
 
 ### API_LISTEN_ADDRESS
-defines the local address for the api instance. if you are using a docker container, you usually don't need to configure this.
+defines the local address for the api instance. defaults to `127.0.0.1`, so the instance is only reachable from the machine it runs on. the docker image sets it to `0.0.0.0` on its own; restrict exposure with the host side of the port mapping instead (e.g. `127.0.0.1:9000:9000`).
 
 the value is a local IP address.
 
@@ -160,6 +160,9 @@ to use freebind in cobalt, you need to follow its [setup instructions](https://g
 if you want to use this option and run cobalt in a docker container, you also need to set the `API_LISTEN_ADDRESS` env variable to `127.0.0.1` and set `network_mode` for the container to `host`.
 
 the value is an IPv6 range.
+
+### outgoing request protection
+tunnels only connect to public unicast addresses. any media url, redirect, or hls playlist entry that resolves to a loopback, private, link-local (e.g. `169.254.169.254`), or otherwise reserved address is refused. when `HTTP_PROXY`/`HTTPS_PROXY` or freebind is used, urls are checked before each request, but redirects are resolved by the proxy and can't be checked.
 
 ## limits
 [*jump to the table*](#limit-vars)
@@ -213,12 +216,12 @@ the value is a number.
 > in order to enable turnstile bot protection, `TURNSTILE_SITEKEY`, `TURNSTILE_SECRET`, and `JWT_SECRET` must be set. all three at once.
 
 ### CORS_WILDCARD
-defines whether cross-origin resource sharing is enabled. when enabled, your instance will be accessible from foreign web pages.
+defines whether cross-origin resource sharing is enabled for every origin. when set to `1`, your instance will be accessible from foreign web pages. disabled by default: only `CORS_URL` (if set) may make cross-origin requests.
 
 the value is a number, either `0` or `1`.
 
 ### CORS_URL
-configures the [cross-origin resource sharing origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Origin). your instance will be available only from this URL if `CORS_WILDCARD` is set to `0`.
+configures the [cross-origin resource sharing origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Origin). your instance will be available only from this URL unless `CORS_WILDCARD` is set to `1`. when unset, cross-origin requests are not allowed at all.
 
 the value is a URL.
 
@@ -250,7 +253,7 @@ see [the api key section](/docs/protect-an-instance.md#api-key-file-format) in t
 the value is a URL.
 
 ### API_AUTH_REQUIRED
-when set to `1`, the user always needs to be authenticated in some way before they can access the API (either via an api key or via turnstile, if enabled).
+when set to `1`, the user always needs to be authenticated in some way before they can access the API (either via an api key or via turnstile, if enabled). defaults to `1` when `API_KEY_URL` is set; set it to `0` explicitly to also allow anonymous requests.
 
 the value is a number, either `0` or `1`.
 

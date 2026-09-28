@@ -10,11 +10,18 @@ import { closeRequest } from "./shared.js";
 import { decryptStream, encryptStream } from "../misc/crypto.js";
 import { hashHmac } from "../security/secrets.js";
 import { zip } from "../misc/utils.js";
+import { safeAgent } from "../security/ssrf.js";
 
 // optional dependency
 const freebind = env.freebindCIDR && await import('freebind').catch(() => {});
 
 const streamCache = new Store('streams');
+
+export const usesHttpProxy = () => !!(
+    env.externalProxy
+    || process.env.HTTP_PROXY || process.env.http_proxy
+    || process.env.HTTPS_PROXY || process.env.https_proxy
+);
 
 const internalStreamCache = new Map();
 
@@ -142,6 +149,13 @@ export function createInternalStream(url, obj = {}, isSubtitles) {
     let dispatcher = obj.dispatcher;
     if (obj.requestIP) {
         dispatcher = freebind?.dispatcherFromIP(obj.requestIP, { strict: false })
+    }
+
+    // fall back to the ssrf-safe agent unless an outgoing http proxy
+    // is configured (the proxy resolves hosts, so internal.js does a
+    // preflight check instead)
+    if (!dispatcher && !usesHttpProxy()) {
+        dispatcher = safeAgent;
     }
 
     const streamID = nanoid();
