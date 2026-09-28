@@ -64,10 +64,13 @@ export const loadEnvs = (env = process.env) => {
         apiPort: env.API_PORT || 9000,
         tunnelPort: env.API_PORT || 9000,
 
-        listenAddress: env.API_LISTEN_ADDRESS,
+        // listen only on loopback unless explicitly configured otherwise
+        // (the docker image sets API_LISTEN_ADDRESS=0.0.0.0 itself)
+        listenAddress: env.API_LISTEN_ADDRESS || '127.0.0.1',
         freebindCIDR: process.platform === 'linux' && env.FREEBIND_CIDR,
 
-        corsWildcard: env.CORS_WILDCARD !== '0',
+        // cross-origin access from any website is opt-in
+        corsWildcard: env.CORS_WILDCARD === '1',
         corsURL: env.CORS_URL,
 
         cookiePath: env.COOKIE_PATH,
@@ -108,7 +111,9 @@ export const loadEnvs = (env = process.env) => {
                             && env.JWT_SECRET,
 
         apiKeyURL: env.API_KEY_URL && new URL(env.API_KEY_URL),
-        authRequired: env.API_AUTH_REQUIRED === '1',
+        // when api keys are configured, require them unless explicitly disabled
+        authRequired: env.API_AUTH_REQUIRED === '1'
+            || (!!env.API_KEY_URL && env.API_AUTH_REQUIRED !== '0'),
         redisURL: env.API_REDIS_URL,
         instanceCount: (env.API_INSTANCE_COUNT && parseInt(env.API_INSTANCE_COUNT)) || 1,
         keyReloadInterval: 900,
@@ -193,11 +198,13 @@ const reloadEnvs = async (contents) => {
 
     for (let line of resolvedContents.split('\n')) {
         line = line.trim();
-        if (line === '') {
+        if (line === '' || line.startsWith('#')) {
             continue;
         }
 
         let [ key, value ] = line.split(/=(.+)?/);
+        // `KEY=` (empty value) used to crash the reload
+        value ??= '';
         if (key) {
             if (value.match(/^['"]/) && value.match(/['"]$/)) {
                 value = JSON.parse(value);
@@ -278,6 +285,14 @@ export const setupEnvWatcher = () => {
         if (isFile) {
             setupWatcherFromFile(envFile);
         } else {
+            // env files contain secrets and control the instance, so
+            // they must not be fetched over plaintext http (except
+            // from the local machine)
+            const { protocol, hostname } = new URL(envFile);
+            const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+            if (protocol !== 'https:' && !(protocol === 'http:' && isLocal)) {
+                throw new Error('API_ENV_FILE must be a local path or an https:// url');
+            }
             setupWatcherFromFetch(envFile);
         }
     } else if (cluster.isWorker) {
