@@ -1,9 +1,23 @@
-import { request } from "undici";
+import { Agent, request } from "undici";
 import { create as contentDisposition } from "content-disposition-header";
 
-import { destroyInternalStream } from "./manage.js";
+import { env } from "../config.js";
+import { destroyInternalStream, getInternalTunnelFromURL } from "./manage.js";
 import { getHeaders, closeRequest, closeResponse, pipe } from "./shared.js";
-import { safeAgent, assertPublicURL } from "../security/ssrf.js";
+
+// proxy tunnels only ever connect to cobalt's own internal tunnel on
+// 127.0.0.1 (see wrapStream in manage.js). the internal tunnel is what
+// fetches the actual media url, and it does so through the ssrf-safe
+// dispatchers, so the url itself can't be checked against the ssrf
+// blocklist here.
+const internalAgent = new Agent();
+
+const isInternalTunnel = (url) => {
+    const { origin, pathname } = new URL(url);
+    return origin === `http://127.0.0.1:${env.tunnelPort}`
+        && pathname === '/itunnel'
+        && !!getInternalTunnelFromURL(url);
+}
 
 export default async function (streamInfo, res) {
     const abortController = new AbortController();
@@ -17,7 +31,9 @@ export default async function (streamInfo, res) {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Content-disposition', contentDisposition(streamInfo.filename));
 
-        await assertPublicURL(streamInfo.urls);
+        if (!isInternalTunnel(streamInfo.urls)) {
+            return shutdown();
+        }
 
         const { body: stream, headers, statusCode } = await request(streamInfo.urls, {
             headers: {
@@ -25,8 +41,10 @@ export default async function (streamInfo, res) {
                 Range: streamInfo.range
             },
             signal: abortController.signal,
-            maxRedirections: 16,
-            dispatcher: safeAgent,
+            // the internal tunnel has already followed every redirect it
+            // allows, so a redirect it passes on must not be followed here
+            maxRedirections: 0,
+            dispatcher: internalAgent,
         });
 
         res.status(statusCode);
