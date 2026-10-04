@@ -10,7 +10,7 @@ import { closeRequest } from "./shared.js";
 import { decryptStream, encryptStream } from "../misc/crypto.js";
 import { hashHmac } from "../security/secrets.js";
 import { zip } from "../misc/utils.js";
-import { safeAgent } from "../security/ssrf.js";
+import { safeAgent, guardDispatcher, createProxyAgent } from "../security/ssrf.js";
 
 // optional dependency
 const freebind = env.freebindCIDR && await import('freebind').catch(() => {});
@@ -22,6 +22,18 @@ export const usesHttpProxy = () => !!(
     || process.env.HTTP_PROXY || process.env.http_proxy
     || process.env.HTTPS_PROXY || process.env.https_proxy
 );
+
+// tunnels don't use the global dispatcher when a proxy is configured,
+// but an ssrf-checked copy of it that's rebuilt the same way (see api.js)
+let proxyAgent;
+env.subscribe(['externalProxy', 'httpProxyValues'], () => {
+    const options = {};
+    if (env.externalProxy) {
+        options.httpProxy = env.externalProxy;
+    }
+
+    proxyAgent = createProxyAgent(options);
+});
 
 const internalStreamCache = new Map();
 
@@ -147,15 +159,18 @@ export function createInternalStream(url, obj = {}, isSubtitles) {
     assert(typeof url === 'string');
 
     let dispatcher = obj.dispatcher;
-    if (obj.requestIP) {
-        dispatcher = freebind?.dispatcherFromIP(obj.requestIP, { strict: false })
+    if (obj.requestIP && freebind) {
+        // freebind sockets resolve and connect on their own, so every
+        // request (including each redirect) is checked before it's sent
+        dispatcher = guardDispatcher(
+            freebind.dispatcherFromIP(obj.requestIP, { strict: false })
+        );
     }
 
-    // fall back to the ssrf-safe agent unless an outgoing http proxy
-    // is configured (the proxy resolves hosts, so internal.js does a
-    // preflight check instead)
-    if (!dispatcher && !usesHttpProxy()) {
-        dispatcher = safeAgent;
+    // fall back to the ssrf-safe agent, or to its proxy-aware
+    // counterpart if an outgoing http proxy is configured
+    if (!dispatcher) {
+        dispatcher = usesHttpProxy() ? proxyAgent : safeAgent;
     }
 
     const streamID = nanoid();
@@ -181,6 +196,9 @@ export function createInternalStream(url, obj = {}, isSubtitles) {
         controller,
         dispatcher,
         isHLS: obj.isHLS,
+        // the url is known to point at an hls playlist (rather than
+        // a segment or a key), whatever content-type it's served with
+        hlsPlaylist: !!obj.hlsPlaylist,
         transplant: obj.transplant
     });
 
@@ -277,12 +295,15 @@ function wrapStream(streamInfo) {
         streamInfo.transplant = transplantTunnel.bind(streamInfo);
     }
 
+    // the media urls of an hls stream are playlists
+    const tunnelInfo = { ...streamInfo, hlsPlaylist: streamInfo.isHLS };
+
     if (typeof url === 'string') {
-        streamInfo.urls = createInternalStream(url, streamInfo);
+        streamInfo.urls = createInternalStream(url, tunnelInfo);
     } else if (Array.isArray(url)) {
         for (const idx in streamInfo.urls) {
             streamInfo.urls[idx] = createInternalStream(
-                streamInfo.urls[idx], streamInfo
+                streamInfo.urls[idx], tunnelInfo
             );
         }
     } else throw 'invalid urls';

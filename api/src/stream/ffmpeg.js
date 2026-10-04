@@ -47,6 +47,24 @@ const killProcess = (p) => {
     }, 5000);
 }
 
+// every http request ffmpeg makes is sent through cobalt's internal tunnel
+// handler, used as an http proxy. the protocol whitelist alone isn't enough:
+// ffmpeg also fetches urls it finds on its own (hls keys, dash manifests,
+// playlists served with an unexpected content-type, redirects). the tunnel
+// handler only serves registered internal tunnels, so none of those can
+// reach anything else. ffmpeg only reads `http_proxy` and `no_proxy`.
+const getEnvironment = () => {
+    const environment = {
+        ...process.env,
+        http_proxy: `http://127.0.0.1:${env.tunnelPort}`,
+    };
+
+    delete environment.no_proxy;
+    delete environment.NO_PROXY;
+
+    return environment;
+}
+
 const getCommand = (args) => {
     if (typeof env.processingPriority === 'number' && !isNaN(env.processingPriority)) {
         return ['nice', ['-n', env.processingPriority.toString(), ffmpeg, ...args]]
@@ -80,6 +98,7 @@ const render = async (res, streamInfo, ffargs, estimateMultiplier) => {
         ];
 
         process = spawn(...getCommand(args), {
+            env: getEnvironment(),
             windowsHide: true,
             stdio: [
                 'inherit', 'inherit', 'inherit',

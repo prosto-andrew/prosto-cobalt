@@ -31,7 +31,7 @@ services:
             # only this origin may call the api from a browser.
             # set it to wherever you host cobalt web, or leave unset
             # to disallow cross-origin requests entirely.
-            # CORS_URL: "http://127.0.0.1:5173"
+            # CORS_URL: "https://127.0.0.1:5173"
 
             # api keys: when API_KEY_URL is set, every request must carry
             # `Authorization: Api-Key <uuid>` (see /docs/protect-an-instance.md)

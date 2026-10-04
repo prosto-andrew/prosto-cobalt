@@ -162,7 +162,11 @@ if you want to use this option and run cobalt in a docker container, you also ne
 the value is an IPv6 range.
 
 ### outgoing request protection
-tunnels only connect to public unicast addresses. any media url, redirect, or hls playlist entry that resolves to a loopback, private, link-local (e.g. `169.254.169.254`), or otherwise reserved address is refused. when `HTTP_PROXY`/`HTTPS_PROXY` or freebind is used, urls are checked before each request, but redirects are resolved by the proxy and can't be checked.
+tunnels only connect to public unicast addresses. any media url, redirect, or hls playlist entry that resolves to a loopback, private, link-local (e.g. `169.254.169.254`), or otherwise reserved address is refused. ffmpeg can only reach cobalt's internal tunnels: its http requests are sent through the internal tunnel handler, so urls it finds on its own (in playlists, dash manifests, or redirects) go nowhere.
+
+when `HTTP_PROXY`/`HTTPS_PROXY` or freebind is used, every request and every redirect is checked before it's sent, using the local dns resolver. requests that don't go through the proxy (`NO_PROXY`, or a protocol without a configured proxy) are also checked when connecting. proxied and freebind requests are resolved again by the proxy or freebind after the check, so a hostname whose dns answer changes in between (dns rebinding) can't be ruled out there.
+
+dns resolvers that answer with addresses from reserved ranges (e.g. the `198.18.0.0/15` "fake-ip" mode of some vpn and proxy clients) make every tunnel fail.
 
 ## limits
 [*jump to the table*](#limit-vars)

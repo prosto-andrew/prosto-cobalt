@@ -58,4 +58,6 @@ export const setupTunnelHandler = () => {
         console.log(`${Green('[✓]')} internal tunnel handler running on 127.0.0.1:${port}`);
         setTunnelPort(port);
     });
+
+    return server;
 }
