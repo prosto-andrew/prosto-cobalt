@@ -1,12 +1,13 @@
 # локальный запуск усиленной версии cobalt
 
-эта ветка (`security-hardening`) меняет поведение по умолчанию так, чтобы инстанс
-был закрыт снаружи. подробности изменений — в разделе [что изменено](#что-изменено).
+ветка `custom` этого форка меняет поведение по умолчанию так, чтобы инстанс
+был закрыт снаружи. ветка `main` — чистая копия оригинального cobalt, без этих правок.
+подробности изменений — в разделе [что изменено](#что-изменено).
 
 ## вариант 1: docker compose
 
 ```sh
-git clone https://github.com/prosto-andrew/prosto-cobalt
+git clone -b custom https://github.com/prosto-andrew/prosto-cobalt
 cd prosto-cobalt/docs/examples
 
 # ключ api (UUIDv4)
@@ -24,7 +25,7 @@ api будет доступен только с этого компьютера:
 ## вариант 2: без docker (node >= 18.17, pnpm)
 
 ```sh
-git clone https://github.com/prosto-andrew/prosto-cobalt
+git clone -b custom https://github.com/prosto-andrew/prosto-cobalt
 cd prosto-cobalt
 pnpm install --frozen-lockfile
 
@@ -62,6 +63,24 @@ pnpm exec vite preview --host 127.0.0.1 --port 5173
 
 и запустите api с `CORS_URL=http://127.0.0.1:5173`. ключ вводится в веб-интерфейсе:
 настройки → instances → включить свой инстанс и указать api key.
+
+## обновление из оригинального cobalt
+
+1. на github откройте форк, переключитесь на ветку `main` и нажмите **Sync fork**.
+2. влейте обновления в `custom`:
+
+```sh
+cd prosto-cobalt
+git checkout custom
+git pull
+git fetch origin main
+git merge origin/main   # при конфликтах — решить, затем git commit
+git push
+```
+
+3. перезапустите инстанс:
+   - docker: `docker compose -f docs/examples/docker-compose.example.yml up -d --build`;
+   - без docker: `pnpm install --frozen-lockfile`, затем запустите api так же, как в варианте 2.
 
 ## что изменено
 
